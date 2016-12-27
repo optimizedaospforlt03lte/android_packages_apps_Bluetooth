@@ -77,5 +77,6 @@ public class BluetoothPbapReceiver extends BroadcastReceiver {
             if (D) Log.d(TAG, "Calling start service with action = " + in.getAction());
             context.startService(in);
         }
+        Log.i(TAG, "Exit - onReceive for intent:" + action);
     }
 }

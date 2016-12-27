@@ -45,7 +45,7 @@ public class BluetoothMapMasInstance implements IObexConnectionHandler {
     private static volatile int sInstanceCounter = 0;
 
     private static final boolean D = BluetoothMapService.DEBUG;
-    private static final boolean V = BluetoothMapService.VERBOSE;
+    private static final boolean V = Log.isLoggable(BluetoothMapService.LOG_TAG, Log.VERBOSE);
 
     private static final int SDP_MAP_MSG_TYPE_EMAIL    = 0x01;
     private static final int SDP_MAP_MSG_TYPE_SMS_GSM  = 0x02;
@@ -148,7 +148,8 @@ public class BluetoothMapMasInstance implements IObexConnectionHandler {
 
     @Override
     public String toString() {
-        return "MasId: " + mMasInstanceId + " Uri:" + mBaseUri + " SMS/MMS:" + mEnableSmsMms;
+        return "MasId: " + mMasInstanceId + " Uri:" + mBaseUri + " Is Enable SMS/MMS? :"
+                + mEnableSmsMms;
     }
 
     private void init() {
@@ -355,11 +356,20 @@ public class BluetoothMapMasInstance implements IObexConnectionHandler {
 
             mMnsClient = mnsClient;
             BluetoothMapObexServer mapServer;
-            mObserver = new  BluetoothMapContentObserver(mContext,
+            if (mAccount != null && mAccount.getType() == TYPE.EMAIL) {
+                Log.d(TAG, "startObexServerSession getType = " + mAccount.getType());
+                mObserver = new  BluetoothMapContentObserverEmail(mContext,
                                                          mMnsClient,
                                                          this,
                                                          mAccount,
                                                          mEnableSmsMms);
+            } else {
+                mObserver = new  BluetoothMapContentObserver(mContext,
+                                                         mMnsClient,
+                                                         this,
+                                                         mAccount,
+                                                         mEnableSmsMms);
+            }
             mObserver.init();
             mapServer = new BluetoothMapObexServer(mServiceHandler,
                                                     mContext,
@@ -394,7 +404,7 @@ public class BluetoothMapMasInstance implements IObexConnectionHandler {
         return (mConnSocket != null);
     }
 
-    public void shutdown() {
+    public synchronized void shutdown() {
         if (D) Log.d(TAG, "MAP Service shutdown");
 
         if (mServerSession != null) {
@@ -409,8 +419,9 @@ public class BluetoothMapMasInstance implements IObexConnectionHandler {
         removeSdpRecord();
 
         closeConnectionSocket();
-
-        closeServerSockets(true);
+        //Donot block for Accept thread cleanup.
+        //Fix Handler Thread block during BT Turn OFF.
+        closeServerSockets(false);
     }
 
     /**
@@ -423,6 +434,7 @@ public class BluetoothMapMasInstance implements IObexConnectionHandler {
 
 
     private final synchronized void closeServerSockets(boolean block) {
+        if(V) Log.d(TAG, "closeServerSock");
         // exit SocketAcceptThread early
         ObexServerSockets sockets = mServerSockets;
         if (sockets != null) {
@@ -432,6 +444,7 @@ public class BluetoothMapMasInstance implements IObexConnectionHandler {
     }
 
     private final synchronized void closeConnectionSocket() {
+        if(V) Log.d(TAG, "closeConnectionSock");
         if (mConnSocket != null) {
             try {
                 mConnSocket.close();
@@ -461,6 +474,7 @@ public class BluetoothMapMasInstance implements IObexConnectionHandler {
         /* Signal to the service that we have received an incoming connection.
          */
         boolean isValid = mMapService.onConnect(device, BluetoothMapMasInstance.this);
+        if(V) Log.d(TAG, "onConnect");
 
         if(isValid == true) {
             mRemoteDevice = device;

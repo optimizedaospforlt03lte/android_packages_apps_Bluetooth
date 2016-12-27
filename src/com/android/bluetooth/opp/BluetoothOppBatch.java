@@ -40,8 +40,6 @@ import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.util.Log;
 
-import com.google.android.collect.Lists;
-
 /**
  * This class stores information about a batch of OPP shares that should be
  * transferred in one session.
@@ -61,7 +59,7 @@ import com.google.android.collect.Lists;
 
 public class BluetoothOppBatch {
     private static final String TAG = "BtOppBatch";
-    private static final boolean V = Constants.VERBOSE;
+    private static final boolean V = Log.isLoggable(Constants.TAG, Log.VERBOSE);
 
     public int mId;
     public int mStatus;
@@ -105,7 +103,7 @@ public class BluetoothOppBatch {
     public BluetoothOppBatch(Context context, BluetoothOppShareInfo info) {
         BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
         mContext = context;
-        mShares = Lists.newArrayList();
+        mShares = new ArrayList<BluetoothOppShareInfo>();
         mTimestamp = info.mTimestamp;
         mDirection = info.mDirection;
         mDestination = adapter.getRemoteDevice(info.mDestination);
@@ -126,25 +124,6 @@ public class BluetoothOppBatch {
         mShares.add(info);
         if (mListener != null) {
             mListener.onShareAdded(info.mId);
-        }
-    }
-
-    /**
-     * Delete one share from the batch. Not used now.
-     */
-    /*It should only be called under requirement that cancel one single share, but not to
-     * cancel the whole batch. Currently we assume "cancel" is to cancel whole batch.
-     */
-    public void deleteShare(BluetoothOppShareInfo info) {
-        if (info.mStatus == BluetoothShare.STATUS_RUNNING) {
-            info.mStatus = BluetoothShare.STATUS_CANCELED;
-            if (info.mDirection == BluetoothShare.DIRECTION_INBOUND && info.mFilename != null) {
-                new File(info.mFilename).delete();
-            }
-        }
-
-        if (mListener != null) {
-            mListener.onShareDeleted(info.mId);
         }
     }
 

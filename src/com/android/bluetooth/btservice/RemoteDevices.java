@@ -83,10 +83,13 @@ final class RemoteDevices {
     }
 
     BluetoothDevice getDevice(byte[] address) {
-        DeviceProperties prop = mDevices.get(Utils.getAddressStringFromByte(address));
-        if (prop == null)
-           return null;
-        return prop.getDevice();
+        synchronized (mDevices) {
+            DeviceProperties p = mDevices.get(Utils.getAddressStringFromByte(address));
+            if (p != null) {
+                return p.getDevice();
+            }
+        }
+        return null;
     }
 
     DeviceProperties addDeviceProperties(byte[] address) {
@@ -246,7 +249,7 @@ final class RemoteDevices {
         Intent intent = new Intent(BluetoothDevice.ACTION_UUID);
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
         intent.putExtra(BluetoothDevice.EXTRA_UUID, prop == null? null: prop.mUuids);
-        mAdapterService.initProfilePriorities(device, prop.mUuids);
+        mAdapterService.initProfilePriorities(device, prop == null? null: prop.mUuids);
         mAdapterService.sendBroadcast(intent, AdapterService.BLUETOOTH_ADMIN_PERM);
 
         //Remove the outstanding UUID request
@@ -273,7 +276,7 @@ final class RemoteDevices {
             return;
         }
 
-        for (int j = 0; j < types.length; j++) {
+        for (int j = 0; j < types.length && device != null; j++) {
             type = types[j];
             val = values[j];
             if (val.length <= 0)
@@ -316,8 +319,9 @@ final class RemoteDevices {
                             break;
                         case AbstractionLayer.BT_PROPERTY_UUIDS:
                             int numUuids = val.length/AbstractionLayer.BT_UUID_SIZE;
+                            int state = mAdapterService.getState();
                             device.mUuids = Utils.byteArrayToUuid(val);
-                            if (mAdapterService.getState() == BluetoothAdapter.STATE_ON)
+                            if (state == BluetoothAdapter.STATE_ON)
                                 sendUuidIntent(bdDevice);
                             break;
                         case AbstractionLayer.BT_PROPERTY_TYPE_OF_DEVICE:
@@ -381,12 +385,6 @@ final class RemoteDevices {
             }
             debugLog("aclStateChangeCallback: State:Connected to Device:" + device);
         } else {
-            if (device.getBondState() == BluetoothDevice.BOND_BONDING) {
-                /*Broadcasting PAIRING_CANCEL intent as well in this case*/
-                intent = new Intent(BluetoothDevice.ACTION_PAIRING_CANCEL);
-                intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
-                mAdapterService.sendBroadcast(intent, mAdapterService.BLUETOOTH_PERM);
-            }
             if (state == BluetoothAdapter.STATE_ON || state == BluetoothAdapter.STATE_TURNING_OFF) {
                 intent = new Intent(BluetoothDevice.ACTION_ACL_DISCONNECTED);
             } else if (state == BluetoothAdapter.STATE_BLE_ON || state == BluetoothAdapter.STATE_BLE_TURNING_OFF) {
@@ -412,9 +410,11 @@ final class RemoteDevices {
     }
 
     void updateUuids(BluetoothDevice device) {
+
         Message message = mHandler.obtainMessage(MESSAGE_UUID_INTENT);
         message.obj = device;
         mHandler.sendMessage(message);
+
     }
 
     private final Handler mHandler = new Handler() {

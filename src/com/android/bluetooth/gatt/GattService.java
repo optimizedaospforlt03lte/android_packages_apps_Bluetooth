@@ -51,6 +51,7 @@ import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.BluetoothProto;
+import com.android.bluetooth.a2dp.A2dpService;
 import com.android.bluetooth.btservice.ProfileService;
 import com.android.bluetooth.util.NumberUtils;
 import com.android.internal.annotations.VisibleForTesting;
@@ -176,6 +177,8 @@ public class GattService extends ProfileService {
     private Set<String> mReliableQueue = new HashSet<String>();
 
     static {
+        System.load("/system/lib/libbluetooth_jni.so");
+        if (DBG) Log.d(TAG, "classInitNative called");
         classInitNative();
     }
 
@@ -207,16 +210,28 @@ public class GattService extends ProfileService {
         mHandleMap.clear();
         mServiceDeclarations.clear();
         mReliableQueue.clear();
-        if (mAdvertiseManager != null) mAdvertiseManager.cleanup();
-        if (mScanManager != null) mScanManager.cleanup();
+        if (mAdvertiseManager != null) {
+            mAdvertiseManager.cleanup();
+            mAdvertiseManager = null;
+        }
+        if (mScanManager != null) {
+            mScanManager.cleanup();
+            mScanManager = null;
+        }
         return true;
     }
 
     protected boolean cleanup() {
         if (DBG) Log.d(TAG, "cleanup()");
         cleanupNative();
-        if (mAdvertiseManager != null) mAdvertiseManager.cleanup();
-        if (mScanManager != null) mScanManager.cleanup();
+        if (mAdvertiseManager != null) {
+            mAdvertiseManager.cleanup();
+            mAdvertiseManager = null;
+        }
+        if (mScanManager != null) {
+            mScanManager.cleanup();
+            mScanManager = null;
+        }
         return true;
     }
 
@@ -379,6 +394,15 @@ public class GattService extends ProfileService {
         public void clientConnect(int clientIf, String address, boolean isDirect, int transport) {
             GattService service = getService();
             if (service == null) return;
+
+            //do not allow new connections with active multicast
+            A2dpService a2dpService = A2dpService.getA2dpService();
+            if (a2dpService != null &&
+                    a2dpService.isMulticastOngoing(null)) {
+                Log.i(TAG,"A2dp Multicast is Ongoing, ignore Connection Request");
+                return;
+            }
+
             service.clientConnect(clientIf, address, isDirect, transport);
         }
 
@@ -478,6 +502,15 @@ public class GattService extends ProfileService {
         public void serverConnect(int serverIf, String address, boolean isDirect, int transport) {
             GattService service = getService();
             if (service == null) return;
+
+            //do not allow new connections with active multicast
+            A2dpService a2dpService = A2dpService.getA2dpService();
+            if (a2dpService != null &&
+                    a2dpService.isMulticastOngoing(null)) {
+                Log.i(TAG,"A2dp Multicast is Ongoing, ignore Connection Request");
+                return;
+            }
+
             service.serverConnect(serverIf, address, isDirect, transport);
         }
 

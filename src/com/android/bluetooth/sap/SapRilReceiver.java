@@ -18,8 +18,8 @@ import android.util.Log;
 public class SapRilReceiver implements Runnable {
 
     private static final String TAG = "SapRilReceiver";
-    public static final boolean DEBUG = true;
-    public static final boolean VERBOSE = true;
+    public static final boolean DEBUG = Log.isLoggable(SapService.LOG_TAG, Log.DEBUG);
+    public static final boolean VERBOSE = Log.isLoggable(SapService.LOG_TAG, Log.VERBOSE);
 
     private static final String SOCKET_NAME_RIL_BT = "sap_uim_socket1";
     // match with constant in ril.cpp - as in RIL.java
@@ -33,6 +33,7 @@ public class SapRilReceiver implements Runnable {
 
     public static final int RIL_MAX_COMMAND_BYTES = (8 * 1024);
     byte[] buffer = new byte[RIL_MAX_COMMAND_BYTES];
+    boolean mShutdown = false;
 
     public SapRilReceiver(Handler SapServerMsgHandler, Handler sapServiceHandler) {
         mSapServerMsgHandler = SapServerMsgHandler;
@@ -44,11 +45,11 @@ public class SapRilReceiver implements Runnable {
      * success. (Based on the approach used to open the rild socket in telephony)
      * @return The socket handle
      */
-    public static LocalSocket openRilBtSocket() {
+    private LocalSocket openRilBtSocket() {
         int retryCount = 0;
         LocalSocket rilSocket = null;
 
-        for (;;) {
+        for (;mShutdown == false;) {
             LocalSocketAddress address;
 
             try {
@@ -77,7 +78,7 @@ public class SapRilReceiver implements Runnable {
                     Log.i (TAG,
                         "Couldn't find '" + SOCKET_NAME_RIL_BT
                         + "' socket; retrying after timeout");
-                    if (VERBOSE) Log.w(TAG, ex);
+                    Log.w(TAG, ex);
                 }
 
                 try {
@@ -88,6 +89,10 @@ public class SapRilReceiver implements Runnable {
                 retryCount++;
                 continue;
             }
+
+        }
+        if(mShutdown) {
+            if(DEBUG) Log.d(TAG, "Shutdown received before RIL socket was opened.");
         }
         return rilSocket;
     }
@@ -101,7 +106,7 @@ public class SapRilReceiver implements Runnable {
      * Notify SapServer that this class is ready for shutdown.
      */
     private void notifyShutdown() {
-        if (DEBUG) Log.i(TAG, "notifyShutdown()");
+        if (DEBUG) Log.d(TAG, "notifyShutdown()");
         // If we are already shutdown, don't bother sending a notification.
         synchronized (this) {
             if (mSocket != null) sendShutdownMessage();
@@ -113,7 +118,7 @@ public class SapRilReceiver implements Runnable {
      * streams.
      */
     public void shutdown() {
-        if (DEBUG) Log.i(TAG, "shutdown()");
+        if (DEBUG) Log.d(TAG, "shutdown()");
 
         /* On Android you need to close the IOstreams using Socket.shutdown*
          * The IOstream close must not be used, as it some how decouples the
@@ -131,12 +136,13 @@ public class SapRilReceiver implements Runnable {
                 try {
                     mSocket.close();
                 } catch (IOException ex) {
-                    if (VERBOSE) Log.e(TAG,"Uncaught exception", ex);
+                    Log.e(TAG,"Uncaught exception", ex);
                 } finally {
                     mSocket = null;
                 }
             }
         }
+        mShutdown = true;
     }
 
     /**
@@ -171,7 +177,7 @@ public class SapRilReceiver implements Runnable {
                 | ((buffer[1] & 0xff) << 16)
                 | ((buffer[2] & 0xff) << 8)
                 | (buffer[3] & 0xff);
-        if (VERBOSE) Log.e(TAG,"Message length found to be: "+messageLength);
+        Log.e(TAG,"Message length found to be: "+messageLength);
         // Read the message
         offset = 0;
         remaining = messageLength;
@@ -199,7 +205,7 @@ public class SapRilReceiver implements Runnable {
     public void run() {
 
         try {
-            if (VERBOSE) Log.i(TAG, "Starting RilBtReceiverThread...");
+            if (VERBOSE) Log.v(TAG, "Starting RilBtReceiverThread...");
 
             mSocket = openRilBtSocket();
             mRilBtInStream = mSocket.getInputStream();
@@ -213,13 +219,13 @@ public class SapRilReceiver implements Runnable {
                 SapMessage sapMsg = null;
                 MsgHeader rilMsg;
 
-                if (VERBOSE) Log.i(TAG, "Waiting for incoming message...");
+                if (VERBOSE) Log.v(TAG, "Waiting for incoming message...");
                 int length = readMessage(mRilBtInStream, buffer);
 
                 SapService.notifyUpdateWakeLock(mSapServiceHandler);
 
                 if (length == -1) {
-                    if (DEBUG) Log.i(TAG, "EOF reached - closing down.");
+                    if (DEBUG) Log.d(TAG, "EOF reached - closing down.");
                     break;
                 }
 
@@ -228,7 +234,7 @@ public class SapRilReceiver implements Runnable {
 
                 rilMsg = MsgHeader.parseFrom(msgStream);
 
-                if (VERBOSE) Log.i(TAG, "Message received.");
+                if (VERBOSE) Log.v(TAG, "Message received.");
 
                 sapMsg = SapMessage.newInstance(rilMsg);
 

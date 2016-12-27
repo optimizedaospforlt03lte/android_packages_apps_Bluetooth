@@ -55,7 +55,7 @@ public class BluetoothOppSendFileInfo {
 
     private static final boolean D = Constants.DEBUG;
 
-    private static final boolean V = Constants.VERBOSE;
+    private static final boolean V = Log.isLoggable(Constants.TAG, Log.VERBOSE);
 
     /** Reusable SendFileInfo for error status. */
     static final BluetoothOppSendFileInfo SEND_FILE_INFO_ERROR = new BluetoothOppSendFileInfo(
@@ -118,8 +118,10 @@ public class BluetoothOppSendFileInfo {
                 // some content providers don't support the DISPLAY_NAME or SIZE columns
                 metadataCursor = null;
             } catch (SecurityException e) {
-                Log.e(TAG, "generateFileInfo: Permission error, could not access URI: " + uri);
-                return SEND_FILE_INFO_ERROR;
+                metadataCursor = null;
+                fileName = uri.getLastPathSegment();
+                Log.e(TAG, "generateFileInfo: " + e);
+                return new BluetoothOppSendFileInfo(fileName, contentType, length, null, 0);
             }
 
             if (metadataCursor != null) {
@@ -188,7 +190,12 @@ public class BluetoothOppSendFileInfo {
                 }
             } catch (FileNotFoundException e) {
                 // Ignore
+            } catch (SecurityException e) {
+                Log.e(TAG, "gnrtFileInfo: openAssetFD:  " + e);
+                Log.e(TAG, "gnrtFileInfo: Close transfer " );
+                return SEND_FILE_INFO_ERROR;
             }
+
         }
 
         if (is == null) {
@@ -206,7 +213,12 @@ public class BluetoothOppSendFileInfo {
                 return SEND_FILE_INFO_ERROR;
             } catch (IOException e) {
                 return SEND_FILE_INFO_ERROR;
+            } catch (SecurityException e) {
+                Log.e(TAG, "OpenInputStrm: generateFileInfo: " + e);
+                Log.e(TAG, "gnrtFileInfo: Close transfer " );
+                return SEND_FILE_INFO_ERROR;
             }
+
         }
 
         if (length == 0) {
@@ -220,8 +232,9 @@ public class BluetoothOppSendFileInfo {
     private static long getStreamSize(FileInputStream is) throws IOException {
         long length = 0;
         byte unused[] = new byte[4096];
-        while (is.available() > 0) {
-            length += is.read(unused, 0, 4096);
+        int bytesRead = -1;
+        while ((bytesRead = is.read(unused, 0, 4096)) != -1) {
+            length += bytesRead;
         }
         return length;
     }
